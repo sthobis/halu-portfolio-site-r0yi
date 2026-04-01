@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+    
+<script>
+(function() {
+  var enabled = false;
+  var overlay = null;
+  var lastTarget = null;
+
+  function createOverlay() {
+    var el = document.createElement('div');
+    el.id = '__halu_inspector_overlay';
+    el.style.cssText = 'position:fixed;pointer-events:none;z-index:99999;border:2px solid #3b82f6;background:rgba(59,130,246,0.08);transition:all 0.1s ease;display:none;';
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function getCssPath(el) {
+    if (!el || el === document.body || el === document.documentElement) return 'body';
+    var parts = [];
+    var current = el;
+    while (current && current !== document.body && parts.length < 4) {
+      var tag = current.tagName.toLowerCase();
+      if (current.id) {
+        parts.unshift(tag + '#' + current.id);
+        break;
+      }
+      var classes = Array.from(current.classList || [])
+        .filter(function(c) { return !c.startsWith('__'); })
+        .slice(0, 2);
+      var selector = tag;
+      if (classes.length > 0) selector += '.' + classes.join('.');
+      parts.unshift(selector);
+      current = current.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  function getElementDescription(el) {
+    var tag = el.tagName.toLowerCase();
+    var text = (el.textContent || '').trim().slice(0, 80);
+    var cssPath = getCssPath(el);
+    return {
+      tagName: tag,
+      cssPath: cssPath,
+      textContent: text,
+      description: '<' + tag + '> "' + (text.length > 50 ? text.slice(0, 50) + '...' : text) + '" (' + cssPath + ')'
+    };
+  }
+
+  var pinnedTarget = null;
+
+  function positionOverlay(target) {
+    if (!target) return;
+    var rect = target.getBoundingClientRect();
+    if (!overlay) overlay = createOverlay();
+    overlay.style.display = 'block';
+    overlay.style.top = rect.top + 'px';
+    overlay.style.left = rect.left + 'px';
+    overlay.style.width = rect.width + 'px';
+    overlay.style.height = rect.height + 'px';
+  }
+
+  function onMouseMove(e) {
+    if (!enabled) return;
+    var target = e.target;
+    if (target === overlay || target.id === '__halu_inspector_overlay') return;
+    lastTarget = target;
+    positionOverlay(target);
+  }
+
+  function onClick(e) {
+    if (!enabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    var target = e.target;
+    if (target === overlay) target = lastTarget || target;
+    pinnedTarget = target;
+    var info = getElementDescription(target);
+    window.parent.postMessage({
+      type: 'halu-element-selected',
+      description: info.description,
+      tagName: info.tagName,
+      cssPath: info.cssPath,
+      textContent: info.textContent
+    }, '*');
+  }
+
+  // Reposition pinned overlay on scroll/resize
+  function updatePinned() {
+    if (pinnedTarget && pinnedTarget.isConnected) {
+      positionOverlay(pinnedTarget);
+    }
+  }
+
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'halu-inspector-toggle') {
+      enabled = e.data.enabled;
+      if (!enabled) {
+        if (!pinnedTarget && overlay) overlay.style.display = 'none';
+        lastTarget = null;
+        document.body.style.cursor = '';
+      } else {
+        pinnedTarget = null;
+        document.body.style.cursor = 'crosshair';
+      }
+    }
+    if (e.data && e.data.type === 'halu-inspector-unpin') {
+      pinnedTarget = null;
+      if (overlay) overlay.style.display = 'none';
+    }
+  });
+
+  document.addEventListener('mousemove', onMouseMove, true);
+  document.addEventListener('click', onClick, true);
+  window.addEventListener('scroll', updatePinned, true);
+  window.addEventListener('resize', updatePinned);
+})();
+</script>
+  </body>
+</html>
